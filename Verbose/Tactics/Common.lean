@@ -2,6 +2,7 @@ import Lean
 import Mathlib.Tactic.Linarith.Frontend
 import Mathlib.Tactic.Ring
 import Mathlib.Tactic.Abel
+import Mathlib.Tactic.FieldSimp
 import Mathlib.Data.Real.Basic
 
 import Verbose.Infrastructure.Extension
@@ -459,7 +460,9 @@ def tryGcongrComputeLemmas : TacticM Bool := withMainContext do
   trace[Verbose] s!"Will now try simplifying using gcongr and anonymous compute lemmas: {lemmas}.
 Goal is\n{← ppGoal g}"
   let goals ← try
-    let (_, _, unsolvedGoalStates) ← g.gcongr (sideGoalDischarger := gcongrDischarger) (mainGoalDischarger := fun g ↦ g.gcongrForward #[]) none []
+    let (_, unsolvedGoalStates) ← Mathlib.Tactic.GCongr.GCongrM.run (g.gcongr none)
+        (sideGoalDischarger := gcongrDischarger)
+        (mainGoalDischarger := fun g ↦ g.gcongrForward #[])
     if unsolvedGoalStates == #[g] then
       trace[Verbose] s!"gcongr failed. Will try lemmas directly."
       restoreState state
@@ -500,9 +503,13 @@ elab "tryTac" tac:tacticSeq : tactic => withMainContext do
   trace[Verbose] "Will try using tactic {tac}"
   evalTactic (← `(tactic| fail_if_no_progress $tac))
 
+-- In Lean v4.29.0-rc3, norm_num must run before na_ring (ring_nf) because ring_nf
+-- transforms e.g. `ε / 2 + ε / 2 ≤ ε` into `ε * Nat.rawCast 1 ≤ ε` which no
+-- other tactic can close. The `field_simp; linarith only` fallback handles
+-- remaining division-related goals that linarith alone can no longer solve.
 def computeAtGoalTac : TacticM Unit := withMainContext do
   try
-    evalTactic (← `(tactic|focus (check_suitable; (iterate 3 (try first | done | rfl | fail_if_no_progress simp_compute | fail_if_no_progress gcongr_compute | tryTac na_ring | tryTac norm_num | tryTac linarith only | tryTac na_abel)); done)))
+    evalTactic (← `(tactic|focus (check_suitable; (iterate 3 (try first | done | rfl | fail_if_no_progress simp_compute | fail_if_no_progress gcongr_compute | tryTac norm_num | tryTac na_ring | tryTac linarith only | tryTac na_abel | (field_simp; linarith only))); done)))
   catch
   | _ => throwError (← computeFailed (← getMainTarget))
 

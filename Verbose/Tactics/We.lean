@@ -71,7 +71,18 @@ def concludeTac (input : Term) : TacticM Unit := withMainContext do
      goal.withContext do
      let prf ← elabTerm input none
      linarith true [prf] {preprocessors := defaultPreprocessors, splitNe := true} goal
-  }) <|> do
+  } <|>
+   -- Workaround for linarith regression with division in Lean v4.29.0-rc3:
+   -- field_simp clears denominators so linarith can handle goals like ε/2 > 0.
+   do {
+     let goal ← getMainGoal
+     goal.withContext do
+     let prf ← elabTerm input none
+     evalTactic (← `(tactic| field_simp))
+     let goal ← getMainGoal
+     goal.withContext do
+     linarith true [prf] {preprocessors := defaultPreprocessors, splitNe := true} goal
+ t  }) <|> do
   let _ ← elabTerm input none
   throwError (← cannotConclude)
 

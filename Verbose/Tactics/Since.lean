@@ -230,7 +230,8 @@ def tryRel (g : MVarId) (hyps : Array Term) : TacticM Bool := do
   -- forward-reasoning on that term) on each of the listed terms.
   let assum (g : MVarId) := g.gcongrForwardStrong hyps
   -- Time to actually run the core tactic `Lean.MVarId.gcongr`!
-  let (_, _, unsolvedGoalStates) ← g.gcongr none [] (sideGoalDischarger := gcongr_side hyps)
+  let (_, unsolvedGoalStates) ← Mathlib.Tactic.GCongr.GCongrM.run (g.gcongr none)
+                                            (sideGoalDischarger := gcongr_side hyps)
                                             (mainGoalDischarger := assum)
   match unsolvedGoalStates.toList with
   -- if all goals are solved, succeed!
