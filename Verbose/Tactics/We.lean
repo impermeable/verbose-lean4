@@ -82,7 +82,7 @@ def concludeTac (input : Term) : TacticM Unit := withMainContext do
      let goal ← getMainGoal
      goal.withContext do
      linarith true [prf] {preprocessors := defaultPreprocessors, splitNe := true} goal
- t  }) <|> do
+  }) <|> do
   let _ ← elabTerm input none
   throwError (← cannotConclude)
 
