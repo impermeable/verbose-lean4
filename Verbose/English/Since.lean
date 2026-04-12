@@ -402,3 +402,10 @@ example (a b : ℝ) (h : a ≥ b) (h' : b > 0) : True := by
 
 example (a b : ℝ) (h : a ≥ b) (h' : b > 0) : |a| = a := by
   Since a ≥ b and b > 0 we get that a > 0 finally we conclude that |a| = a
+
+set_option trace.Verbose true
+example (a b c d : ℝ) (h : a = b) (h': c = d) : a - c = b - d := by
+  Since a = b  we get that a - c = b - c
+  Since a - c = b - c and c = d we conclude that a - c = b - d
+example (a b c d : ℝ) (h : a = b) (h': c = d) : a - c = b - d := by
+  Since a = b and c = d we conclude that a - c = b - d
