@@ -69,6 +69,118 @@ def letsInduct (hyp_name? : Option Name) (stmt : Term) : TacticM Unit := do
     else
       evalTactic (← `(tactic| on_goal 3 => try (exact $(mkIdent hyp_name))))
 
+lemma Nat.le_induction_shift {k : ℕ} {P : ℕ → Prop} (h : ∀ n, P (n + k)) : ∀ n, k ≤ n → P n := by
+  intro n hn
+  simpa [hn] using h (n - k)
+
+lemma Nat.le_induction_shift_undo {k : ℕ} {P : ℕ → Prop} (h : ∀ n, k ≤ n → P n) : ∀ n, P (n + k) := by
+  intro n
+  exact h (n + k) (by grind)
+
+lemma Nat.le_base_split {k : ℕ} {P : ℕ → Prop} (top : P (k + 1)) (rest : ∀ n, n ≤ k → P n) :
+    ∀ n, n ≤ k + 1 → P n := by
+  intro n hn
+  rcases Nat.lt_succ_iff_lt_or_eq.1 (Nat.lt_succ_of_le hn) with h | h
+  · exact rest n (Nat.lt_succ_iff.1 h)
+  · exact h ▸ top
+
+lemma Nat.le_base_zero {P : ℕ → Prop} (h : P 0) : ∀ n, n ≤ 0 → P n := by
+  intro n hn
+  rw [Nat.le_zero.1 hn]; exact h
+
+
+theorem rec_with_bases {motive : ℕ → Prop} {n₀ : ℕ}
+    (base : ∀ n, n ≤ n₀ → motive n)
+    (step : ∀ n, n₀ ≤ n → motive n → motive (n + 1)) :
+    ∀ n, motive n := by
+    intro n
+    induction n
+    · exact base 0 (by grind)
+    next n hn =>
+      by_cases hk : n < n₀
+      · apply base _ (by grind)
+      · apply step _ (by grind) hn
+
+-- Strictly speaking, the base cases could be n < n₀. However, students find strong induction
+-- without base cases very confusing. This formulation almost matches
+theorem strongRec_with_bases {motive : ℕ → Prop} {n₀ : ℕ}
+    (base : ∀ n, n ≤ n₀ → motive n)
+    (step : ∀ n, n₀ ≤ n → (∀ k , k ≤ n → motive k) → motive (n + 1)) :
+    ∀ n, motive n := by
+  intro n
+  induction n
+  · exact base 0 (by grind)
+  next n hn =>
+    sorry
+
+
+def letsInductFlex (binderName : Name) (weak : Bool := true) (bases : Array Nat := #[]) : TacticM Unit := do
+  let orig_goal ← getMainGoal
+  orig_goal.withContext do
+  let goalTypeRaw ← orig_goal.getType >>= instantiateMVars
+  -- TODO: Can I fold this into the previous line?
+  let goalType ← whnf goalTypeRaw
+  -- TODO: Reduce goalType to whnf
+  let .forallE bn bt body .. := goalType  |
+    throwError ← inductionError
+  if bn != binderName then
+    -- TODO (low): Make error more specific
+    throwError ← inductionError
+  if not (← isDefEq bt (mkConst ``Nat)) then
+    -- TODO (low) : Make error more specific
+    throwError ← inductionError
+  -- If the goal starts an implication with a lower bound on the variable,
+  -- capture that bound, else the lower bound is zero
+  let ⟨lowerbound, isLT⟩ : Nat × Bool :=
+    match body with
+    | .forallE _ ineqType _ _ =>
+      match ineqType.getAppFnArgs with
+      -- Only support lower bounds with literal numbers
+      | (``LE.le, #[_, _, .lit <| .natVal n, .bvar _]) => ⟨n, false⟩
+      | (``LT.lt, #[_, _, .lit <| .natVal n, .bvar _]) => ⟨n + 1, true⟩
+      | _ => ⟨0, false⟩
+    | _ => ⟨0, false⟩
+  if isLT then
+    evalTactic (← `(tactic|
+      conv =>
+        enter [1]
+        rw [Nat.lt_iff_add_one_le]))
+  if lowerbound != 0 then
+    evalTactic (← `(tactic| apply Nat.le_induction_shift (k := lowerbound)))
+
+  -- Since we shifted the indunction, we also shift the bases if given.
+  let baseCases := if bases.size == 0 then #[0] else bases.map (fun i => i - lowerbound)
+
+  unless baseCases.isEmpty do
+    let expected := (Array.range (lowerbound + 1))
+    unless bases.qsort (· < ·) == expected do
+      -- TODO: Specialize this error
+      throwError ← inductionError
+
+  let recursor := if weak then ``rec_with_bases else ``strongRec_with_bases
+
+  let goals ← orig_goal.apply (← mkConstWithFreshMVarLevels recursor)
+  let #[base_subgoal, ind_subgoal] := goals.toArray | throwError ← inductionError
+
+  -- Revert the index shift on the inductive step.
+  let stepGoals ←
+    if lowerbound != 0 then
+      ind_subgoal.apply (← mkConstWithFreshMVarLevels ``Nat.le_induction_shift_undo)
+    else
+      pure [ind_subgoal]
+
+  -- Split base goals into multiple cases
+  let mut baseGoals : Array MVarId := #[]
+  let mut remaining := base_subgoal
+  for _ in [0:lowerbound] do
+    let split ← remaining.apply (← mkConstWithFreshMVarLevels ``Nat.le_base_split)
+    let #[top, rest] := split.toArray | throwError ← inductionError
+    baseGoals := baseGoals.push top
+    remaining := rest
+  let zeroGoals ← remaining.apply (← mkConstWithFreshMVarLevels ``Nat.le_base_zero)
+
+  setGoals (zeroGoals ++ baseGoals.toList.reverse ++ stepGoals)
+
 def useTac (witness : Term) (stmt? : Option Term) : TacticM Unit := withMainContext do
   runUse false (pure ()) [witness]
   let newGoal ← getMainGoal
