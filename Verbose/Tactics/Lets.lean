@@ -69,11 +69,11 @@ def letsInduct (hyp_name? : Option Name) (stmt : Term) : TacticM Unit := do
     else
       evalTactic (← `(tactic| on_goal 3 => try (exact $(mkIdent hyp_name))))
 
-lemma Nat.le_induction_shift {k : ℕ} {P : ℕ → Prop} (h : ∀ n, P (n + k)) : ∀ n, k ≤ n → P n := by
+lemma Nat.le_induction_shift {k : ℕ} {P : ℕ → Prop} (h : ∀ n, P (n + k)) : ∀ n ≥ k, P n := by
   intro n hn
   simpa [hn] using h (n - k)
 
-lemma Nat.le_induction_shift_undo {k : ℕ} {P : ℕ → Prop} (h : ∀ n, k ≤ n → P n) : ∀ n, P (n + k) := by
+lemma Nat.le_induction_shift_undo {k : ℕ} {P : ℕ → Prop} (h : ∀ n ≥ k, P n) : ∀ n, P (n + k) := by
   intro n
   exact h (n + k) (by grind)
 
@@ -115,56 +115,75 @@ theorem strongRec_with_bases {motive : ℕ → Prop} {n₀ : ℕ}
 
 
 def letsInductFlex (binderName : Name) (weak : Bool := true) (bases : Array Nat := #[]) : TacticM Unit := do
+  trace[Verbose] "Entering letsInductFlex"
   let orig_goal ← getMainGoal
   orig_goal.withContext do
   let goalTypeRaw ← orig_goal.getType >>= instantiateMVars
   -- TODO: Can I fold this into the previous line?
   let goalType ← whnf goalTypeRaw
-  -- TODO: Reduce goalType to whnf
   let .forallE bn bt body .. := goalType  |
+    trace[Verbose] "Goal does not start with forall quantifier"
     throwError ← inductionError
   if bn != binderName then
     -- TODO (low): Make error more specific
+    trace[Verbose] "Wrong binder name"
     throwError ← inductionError
   if not (← isDefEq bt (mkConst ``Nat)) then
-    -- TODO (low) : Make error more specific
+    trace[Verbose] "Wrong binder type"
     throwError ← inductionError
   -- If the goal starts an implication with a lower bound on the variable,
   -- capture that bound, else the lower bound is zero
-  let ⟨lowerbound, isLT⟩ : Nat × Bool :=
+  let ⟨lowerboundOpt, isStrict⟩ : Option Nat × Bool :=
     match body with
     | .forallE _ ineqType _ _ =>
       match ineqType.getAppFnArgs with
       -- Only support lower bounds with literal numbers
-      | (``LE.le, #[_, _, .lit <| .natVal n, .bvar _]) => ⟨n, false⟩
-      | (``LT.lt, #[_, _, .lit <| .natVal n, .bvar _]) => ⟨n + 1, true⟩
-      | _ => ⟨0, false⟩
-    | _ => ⟨0, false⟩
-  if isLT then
+      | (``LE.le, #[_, _, n, .bvar _]) => ⟨n.nat?, false⟩
+      | (``GE.ge, #[_, _, .bvar _, n]) => ⟨n.nat?, false⟩
+      | (``LT.lt, #[_, _, n, .bvar _]) => ⟨n.nat?, true⟩
+      | (``GT.gt, #[_, _, .bvar _, n]) => ⟨n.nat?, true⟩
+      | _ => ⟨.none, false⟩
+    | _ => ⟨.some 0, false⟩
+  if lowerboundOpt.isNone then
+    trace[Verbose] "No lower bound detected"
+    throwError ← inductionError
+  let lowerbound := lowerboundOpt.get!
+
+  if isStrict then
     evalTactic (← `(tactic|
       conv =>
         enter [1]
         rw [Nat.lt_iff_add_one_le]))
   if lowerbound != 0 then
-    evalTactic (← `(tactic| apply Nat.le_induction_shift (k := lowerbound)))
+    evalTactic (← `(tactic| refine Nat.le_induction_shift (k := $(Syntax.mkNatLit lowerbound)) ?_))
 
-  -- Since we shifted the indunction, we also shift the bases if given.
-  let baseCases := if bases.size == 0 then #[0] else bases.map (fun i => i - lowerbound)
+  -- Since we shifted the induction, we also shift the bases if given
+  let baseCases := if bases.isEmpty then #[0] else bases.map (· - lowerbound)
 
-  unless baseCases.isEmpty do
-    let expected := (Array.range (lowerbound + 1))
-    unless bases.qsort (· < ·) == expected do
-      -- TODO: Specialize this error
-      throwError ← inductionError
+  unless baseCases.qsort (· < ·) == Array.range baseCases.size do
+    -- TODO: Specialize this error
+    trace[Verbose] "Wrong base cases";
+    throwError ← inductionError
 
   let recursor := if weak then ``rec_with_bases else ``strongRec_with_bases
 
-  let goals ← orig_goal.apply (← mkConstWithFreshMVarLevels recursor)
-  let #[base_subgoal, ind_subgoal] := goals.toArray | throwError ← inductionError
+  let curGoal ← getMainGoal
+  trace[Verbose] "Applying recursor"
+  let goals ← curGoal.apply (← mkConstWithFreshMVarLevels recursor)
+  trace[Verbose] "Applied recursor"
+
+  -- Both recursors give a base, induction and n₀ goal.
+  let #[base_subgoal, ind_subgoal, n0_goal] := goals.toArray |
+    trace[Verbose] "Unexpected number of goals from applying recursor"
+    throwError ← inductionError
+
+  let numBaseSplits := baseCases.size - 1
+  n0_goal.assign (mkNatLit numBaseSplits)
 
   -- Revert the index shift on the inductive step.
   let stepGoals ←
     if lowerbound != 0 then
+      trace[Verbose] "Undoing induction shift"
       ind_subgoal.apply (← mkConstWithFreshMVarLevels ``Nat.le_induction_shift_undo)
     else
       pure [ind_subgoal]
@@ -172,9 +191,11 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (bases : Array Nat 
   -- Split base goals into multiple cases
   let mut baseGoals : Array MVarId := #[]
   let mut remaining := base_subgoal
-  for _ in [0:lowerbound] do
+  for _ in [0:numBaseSplits] do
     let split ← remaining.apply (← mkConstWithFreshMVarLevels ``Nat.le_base_split)
-    let #[top, rest] := split.toArray | throwError ← inductionError
+    let #[top, rest] := split.toArray |
+      trace[Verbose] "Not exactly two goals when stating base cases"
+      throwError ← inductionError
     baseGoals := baseGoals.push top
     remaining := rest
   let zeroGoals ← remaining.apply (← mkConstWithFreshMVarLevels ``Nat.le_base_zero)

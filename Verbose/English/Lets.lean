@@ -11,6 +11,9 @@ end Verbose.Named
 namespace Verbose.NameLess
 scoped elab "Let's" " prove by induction that " stmt:term : tactic =>
 letsInduct none stmt
+
+scoped elab "Let's proceed by " s:("strong ")? "induction on " name:ident (", with base cases" )? : tactic =>
+letsInductFlex name.getId s.isNone #[]
 end Verbose.NameLess
 
 open Lean Elab Tactic in
@@ -190,6 +193,22 @@ example : True := by
   success_if_fail_with_msg "The statement must start with a universal quantifier on a natural number."
     Let's prove by induction H : ∀ n : ℤ, true
   trivial
+
+end
+
+section
+open Verbose.NameLess
+
+example : ∀ n : ℕ, n = n  := by
+  Let's proceed by induction on n
+  · grind
+  · -- TODO: Make sure this goal is simplyfied to ∀ (n : ℕ), n = n → n + 1 = n + 1
+    sorry
+
+set_option trace.Verbose true in
+example : ∀ n ≥ 5, n = n := by
+  Let's proceed by induction on n
+  ·
 
 end
 
