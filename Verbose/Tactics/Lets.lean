@@ -73,10 +73,6 @@ lemma Nat.le_induction_shift {k : ℕ} {P : ℕ → Prop} (h : ∀ n, P (n + k))
   intro n hn
   simpa [hn] using h (n - k)
 
-lemma Nat.le_induction_shift_undo {k : ℕ} {P : ℕ → Prop} (h : ∀ n ≥ k, P n) : ∀ n, P (n + k) := by
-  intro n
-  exact h (n + k) (by grind)
-
 lemma Nat.le_base_split {k : ℕ} {P : ℕ → Prop} (top : P (k + 1)) (rest : ∀ n, n ≤ k → P n) :
     ∀ n, n ≤ k + 1 → P n := by
   intro n hn
@@ -100,6 +96,13 @@ theorem rec_with_bases {motive : ℕ → Prop} {n₀ : ℕ}
       by_cases hk : n < n₀
       · apply base _ (by grind)
       · apply step _ (by grind) hn
+
+lemma Nat.le_induction_shift_undo_weak {k : ℕ} {P : ℕ → Prop} (h : ∀ n ≥ k, P n → P (n + 1)) : ∀ n, 0 ≤ n → P (n + k) → P ((n + 1) + k) := by
+  intro n _ h'
+  rw [show n + 1 + k = n + k + 1 by ring]
+  exact h (n + k) (by grind) h'
+
+
 
 -- Strictly speaking, the base cases could be n < n₀. However, students find strong induction
 -- without base cases very confusing. This formulation almost matches
@@ -184,7 +187,10 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (bases : Array Nat 
   let stepGoals ←
     if lowerbound != 0 then
       trace[Verbose] "Undoing induction shift"
-      ind_subgoal.apply (← mkConstWithFreshMVarLevels ``Nat.le_induction_shift_undo)
+      let lem ← mkConstWithFreshMVarLevels ``Nat.le_induction_shift_undo_weak
+      let goals ←  ind_subgoal.apply (mkApp lem (mkNatLit lowerbound))
+      trace[Verbose] "Done undoing induction shift"
+      pure goals
     else
       pure [ind_subgoal]
 
