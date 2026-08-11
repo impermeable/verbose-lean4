@@ -208,7 +208,23 @@ example : ∀ n : ℕ, n = n  := by
 set_option trace.Verbose true in
 example : ∀ n ≥ 5, n = n := by
   Let's proceed by induction on n
-  ·
+  · --TODO remove 0 ≤ n
+    sorry
+  · sorry
+
+example : ∀ n ≥ 5, n = n := by
+  Let's proceed by strong induction on n
+  · --TODO remove 0 ≤ n
+    sorry
+  · sorry
+
+
+example : ∀ n ≥ 5, n = n := by
+  Let's proceed by strong induction on n, with base cases 5, 6, 7
+  · --TODO remove 0 ≤ n
+    sorry
+  · sorry
+
 
 end
 

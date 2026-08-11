@@ -127,6 +127,8 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (bases : Array Nat 
   let .forallE bn bt body .. := goalType  |
     trace[Verbose] "Goal does not start with forall quantifier"
     throwError ← inductionError
+  trace[Verbose] "Extracted body {body}"
+
   if bn != binderName then
     -- TODO (low): Make error more specific
     trace[Verbose] "Wrong binder name"
@@ -134,33 +136,36 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (bases : Array Nat 
   if not (← isDefEq bt (mkConst ``Nat)) then
     trace[Verbose] "Wrong binder type"
     throwError ← inductionError
+
   -- If the goal starts an implication with a lower bound on the variable,
   -- capture that bound, else the lower bound is zero
-  let ⟨lowerboundOpt, isStrict⟩ : Option Nat × Bool :=
+  -- motiveBody contains an expr with the natural at de Bruijn index 0
+  let ⟨lowerboundOpt, isStrict, dependentOnBound, motiveBody⟩ : Option Nat × Bool × Bool × Expr :=
     match body with
-    | .forallE _ ineqType _ _ =>
-      match ineqType.getAppFnArgs with
-      -- Only support lower bounds with literal numbers
-      | (``LE.le, #[_, _, n, .bvar _]) => ⟨n.nat?, false⟩
-      | (``GE.ge, #[_, _, .bvar _, n]) => ⟨n.nat?, false⟩
-      | (``LT.lt, #[_, _, n, .bvar _]) => ⟨n.nat?, true⟩
-      | (``GT.gt, #[_, _, .bvar _, n]) => ⟨n.nat?, true⟩
-      | _ => ⟨.none, false⟩
-    | _ => ⟨.some 0, false⟩
+    | .forallE _ ineqType innerBody _ =>
+      if innerBody.hasLooseBVar 0 then
+        ⟨.none, false, true, body⟩
+      else
+        match ineqType.getAppFnArgs with
+        -- Only support lower bounds with literal numbers
+        | (``LE.le, #[_, _, n, .bvar _]) => ⟨n.nat?, false, false, innerBody.lowerLooseBVars 1 1⟩
+        | (``GE.ge, #[_, _, .bvar _, n]) => ⟨n.nat?, false, false, innerBody.lowerLooseBVars 1 1⟩
+        | (``LT.lt, #[_, _, n, .bvar _]) => ⟨n.nat?, true, false, innerBody.lowerLooseBVars 1 1⟩
+        | (``GT.gt, #[_, _, .bvar _, n]) => ⟨n.nat?, true, false, innerBody.lowerLooseBVars 1 1⟩
+        | _ => ⟨.none, false, false, body⟩
+      | _ => ⟨.some 0, false, false, body⟩
+
+  if dependentOnBound then
+    trace[Verbose] "Motive depends on bound"
+    throwError ← inductionError
+
+  let origMotive := Expr.lam bn bt motiveBody .default
   if lowerboundOpt.isNone then
     trace[Verbose] "No lower bound detected"
     throwError ← inductionError
-  let lowerbound := lowerboundOpt.get!
+  let lowerbound := if isStrict then lowerboundOpt.get! + 1 else lowerboundOpt.get!
 
-  if isStrict then
-    evalTactic (← `(tactic|
-      conv =>
-        enter [1]
-        rw [Nat.lt_iff_add_one_le]))
-  if lowerbound != 0 then
-    evalTactic (← `(tactic| refine Nat.le_induction_shift (k := $(Syntax.mkNatLit lowerbound)) ?_))
-
-  -- Since we shifted the induction, we also shift the bases if given
+  -- Validation of base cases
   let baseCases := if bases.isEmpty then #[0] else bases.map (· - lowerbound)
 
   unless baseCases.qsort (· < ·) == Array.range baseCases.size do
@@ -168,11 +173,27 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (bases : Array Nat 
     trace[Verbose] "Wrong base cases";
     throwError ← inductionError
 
+  let motiveShifted ←
+    if lowerbound = 0 then
+      pure origMotive
+    else
+      withLocalDeclD `m (mkConst ``Nat) fun m => do
+        let shift ← (mkAdd m (mkNatLit lowerbound))
+        mkLambdaFVars #[m] (mkApp origMotive shift).headBeta
+
+  trace[Verbose] "Working with motive: {motiveShifted}"
+
   let recursor := if weak then ``rec_with_bases else ``strongRec_with_bases
+
+
+  trace[Verbose] "Modifying goals"
+  if lowerbound != 0 then
+    evalTactic (← `(tactic| refine Nat.le_induction_shift (k := $(Syntax.mkNatLit lowerbound)) ?_))
 
   let curGoal ← getMainGoal
   trace[Verbose] "Applying recursor"
-  let goals ← curGoal.apply (← mkConstWithFreshMVarLevels recursor)
+  let recExpr ← mkConstWithFreshMVarLevels recursor
+  let goals ← curGoal.apply <| mkApp recExpr motiveShifted
   trace[Verbose] "Applied recursor"
 
   -- Both recursors give a base, induction and n₀ goal.
@@ -182,17 +203,6 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (bases : Array Nat 
 
   let numBaseSplits := baseCases.size - 1
   n0_goal.assign (mkNatLit numBaseSplits)
-
-  -- Revert the index shift on the inductive step.
-  let stepGoals ←
-    if lowerbound != 0 then
-      trace[Verbose] "Undoing induction shift"
-      let lem ← mkConstWithFreshMVarLevels ``Nat.le_induction_shift_undo_weak
-      let goals ←  ind_subgoal.apply (mkApp lem (mkNatLit lowerbound))
-      trace[Verbose] "Done undoing induction shift"
-      pure goals
-    else
-      pure [ind_subgoal]
 
   -- Split base goals into multiple cases
   let mut baseGoals : Array MVarId := #[]
@@ -206,7 +216,7 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (bases : Array Nat 
     remaining := rest
   let zeroGoals ← remaining.apply (← mkConstWithFreshMVarLevels ``Nat.le_base_zero)
 
-  setGoals (zeroGoals ++ baseGoals.toList.reverse ++ stepGoals)
+  setGoals (zeroGoals ++ baseGoals.toList.reverse ++ [ind_subgoal])
 
 def useTac (witness : Term) (stmt? : Option Term) : TacticM Unit := withMainContext do
   runUse false (pure ()) [witness]
