@@ -1,5 +1,7 @@
+import Verbose.English.Common
 import Verbose.Tactics.Lets
 import Mathlib.Tactic.Linarith
+
 
 open Lean
 
@@ -12,8 +14,18 @@ namespace Verbose.NameLess
 scoped elab "Let's" " prove by induction that " stmt:term : tactic =>
 letsInduct none stmt
 
-scoped elab "Let's proceed by " s:("strong ")? "induction on " name:ident (", with base cases" )? : tactic =>
-letsInductFlex name.getId s.isNone #[]
+scoped syntax (name := letsProceedFlex)
+  "Let's proceed by " ("strong ")? "induction on " ident (", with base cases" facts)?  : tactic
+
+open Lean Elab Tactic in
+@[tactic letsProceedFlex]
+def letsProceedFlexImpl : Tactic := fun stx => do
+  match stx with
+  | `(tactic| Let's proceed by $[strong%$s]? induction on $name:ident
+    $[, with base cases $f:facts]?) =>
+    letsInductFlex name.getId s.isNone
+      ((f.map fun facts => (Verbose.English.factsToArray facts).map (·.raw)).getD #[])
+  | _ => throwUnsupportedSyntax
 end Verbose.NameLess
 
 open Lean Elab Tactic in
@@ -199,30 +211,43 @@ end
 section
 open Verbose.NameLess
 
-example : ∀ n : ℕ, n = n  := by
+set_option trace.Verbose true in
+example : ∀ n : ℕ, 5*n ≥ n  := by
   Let's proceed by induction on n
-  · grind
+  · sorry
   · -- TODO: Make sure this goal is simplyfied to ∀ (n : ℕ), n = n → n + 1 = n + 1
     sorry
 
 set_option trace.Verbose true in
-example : ∀ n ≥ 5, n = n := by
+example : ∀ n ≥ 5, 5*n ≥ n := by
   Let's proceed by induction on n
   · --TODO remove 0 ≤ n
     sorry
   · sorry
 
-example : ∀ n ≥ 5, n = n := by
+example : ∀ n ≥ 5, 5*n ≥ n := by
   Let's proceed by strong induction on n
   · --TODO remove 0 ≤ n
     sorry
   · sorry
 
 
-example : ∀ n ≥ 5, n = n := by
-  Let's proceed by strong induction on n, with base cases 5, 6, 7
+set_option trace.Verbose true in
+example : ∀ n ≥ 5, 5*n ≥ n := by
+  Let's proceed by induction on n, with base cases 5, 6 and 7
   · --TODO remove 0 ≤ n
     sorry
+  · sorry
+  · sorry
+  · sorry
+
+set_option trace.Verbose true in
+example : ∀ n ≥ 5, 5*n ≥ n := by
+  Let's proceed by strong induction on n, with base cases 5, 6 and 7
+  · --TODO remove 0 ≤ n
+    sorry
+  · sorry
+  · sorry
   · sorry
 
 
