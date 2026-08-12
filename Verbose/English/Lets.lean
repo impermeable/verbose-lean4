@@ -215,35 +215,35 @@ set_option trace.Verbose true in
 example : ∀ n : ℕ, 5*n ≥ n  := by
   Let's proceed by induction on n
   · sorry
-  · -- TODO: Make sure this goal is simplyfied to ∀ (n : ℕ), n = n → n + 1 = n + 1
+  ·
     sorry
 
 set_option trace.Verbose true in
 example : ∀ n : ℕ, 5*n ≥ n  := by
   Let's proceed by strong induction on n
   · sorry
-  · -- TODO: Make sure this goal is simplyfied to ∀ (n : ℕ), n = n → n + 1 = n + 1
+  ·
     sorry
 
 
 set_option trace.Verbose true in
 example : ∀ n ≥ 5, 5*n ≥ n := by
   Let's proceed by induction on n
-  · --TODO remove 0 ≤ n
+  ·
     sorry
   · sorry
 
 set_option trace.Verbose true in
 example : ∀ n > 5, 5*n ≥ n := by
   Let's proceed by induction on n
-  · --TODO remove 0 ≤ n
+  ·
     sorry
   · sorry
 
 
 example : ∀ n ≥ 5, 5*n ≥ n := by
   Let's proceed by strong induction on n
-  · --TODO remove 0 ≤ n
+  ·
     sorry
   · sorry
 
@@ -251,7 +251,7 @@ example : ∀ n ≥ 5, 5*n ≥ n := by
 set_option trace.Verbose true in
 example : ∀ n ≥ 5, 5*n ≥ n := by
   Let's proceed by induction on n, with base cases 5, 6 and 7
-  · --TODO remove 0 ≤ n
+  ·
     sorry
   · sorry
   · sorry
@@ -260,7 +260,7 @@ example : ∀ n ≥ 5, 5*n ≥ n := by
 set_option trace.Verbose true in
 example : ∀ n ≥ 5, 5*n ≥ n := by
   Let's proceed by strong induction on n, with base cases 5, 6 and 7
-  · --TODO remove 0 ≤ n
+  ·
     sorry
   · sorry
   · sorry
