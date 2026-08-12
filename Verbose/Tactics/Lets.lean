@@ -84,14 +84,6 @@ lemma Nat.le_base_zero {P : ℕ → Prop} (h : P 0) : ∀ n, n ≤ 0 → P n := 
   intro n hn
   rw [Nat.le_zero.1 hn]; exact h
 
-
-theorem rec_with_zero_base {motive : ℕ → Prop}
-    (base : motive 0)
-    (step : ∀ n, motive n → motive (n + 1)) :
-    ∀ n, motive n := by
-    sorry
-
-
 theorem rec_with_bases {motive : ℕ → Prop} {n₀ : ℕ}
     (base : ∀ n, n ≤ n₀ → motive n)
     (step : ∀ n ≥ n₀, motive n → motive (n + 1)) :
@@ -104,21 +96,12 @@ theorem rec_with_bases {motive : ℕ → Prop} {n₀ : ℕ}
       · apply base _ (by grind)
       · apply step _ (by grind) hn
 
-lemma le_induction_shift_undo_weak {k : ℕ} {P : ℕ → Prop} (h : ∀ n ≥ k, P n → P (n + 1)) : ∀ n, P (n + k) → P ((n + 1) + k) := by
-  intro n
-  rw [show n + 1 + k = n + k + 1 by ring]
-  exact h (n + k) (by grind)
-
-lemma le_induction_shift_undo_strong {n₀ : ℕ} {P : ℕ → Prop} {base : ℕ} (h : ∀ n ≥ (n₀ + base), (∀ k ≤ n, P n) → P (n + 1)) : ∀ n ≥ base, (∀ k ≤ n, P (k + n₀)) → P ((n + 1) + n₀) := by
+lemma le_induction_shift_undo_weak {n₀ : ℕ} {P : ℕ → Prop} {k : ℕ} (h : ∀ n ≥ n₀ + k, P n → P (n + 1)) : ∀ n ≥ n₀, P (n + k) → P ((n + 1) + k) := by
   sorry
 
-
-
-theorem strongRec_with_base_zero {motive : ℕ → Prop}
-    (base : motive 0)
-    (step : ∀ n, (∀ k , k ≤ n → motive k) → motive (n + 1)) :
-    ∀ n, motive n := by
+lemma le_induction_shift_undo_strong {n₀ : ℕ} {P : ℕ → Prop} {shift : ℕ} (h : ∀ n ≥ (n₀ + shift), (∀ k ≤ n, P k) → P (n + 1)) : ∀ n ≥ n₀, (∀ k ≤ n, P (k + shift)) → P ((n + 1) + shift) := by
   sorry
+
 
 
 
@@ -134,13 +117,14 @@ theorem strongRec_with_bases {motive : ℕ → Prop} {n₀ : ℕ}
   next n hn =>
     sorry
 
+theorem forall_geq_zero {P : ℕ → Prop} : (∀ n ≥ 0, P n) ↔ ∀ n, P n := by sorry
+
 
 def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array Syntax := #[]) : TacticM Unit := do
   trace[Verbose] "Entering letsInductFlex"
   let orig_goal ← getMainGoal
   orig_goal.withContext do
   let goalTypeRaw ← orig_goal.getType >>= instantiateMVars
-  -- TODO: Can I fold this into the previous line?
   let goalType ← whnf goalTypeRaw
   let .forallE bn bt body .. := goalType  |
     trace[Verbose] "Goal does not start with forall quantifier"
@@ -212,15 +196,9 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array S
 
   let recursor :=
     if weak then
-      if numBaseSplits = 0 then
-        ``rec_with_zero_base
-      else
-        ``rec_with_bases
+      ``rec_with_bases
     else
-      if numBaseSplits = 0 then
-        ``strongRec_with_base_zero
-      else
-        ``strongRec_with_bases
+      ``strongRec_with_bases
 
 
   trace[Verbose] "Modifying goals"
@@ -234,17 +212,11 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array S
   trace[Verbose] "Applied recursor"
 
   let ⟨baseGoal, indGoal⟩ ←
-    if numBaseSplits = 0 then
-      let #[base, ind] := goals.toArray |
-        trace[Verbose] "Unexpected number of goals from applying recursor"
-        throwError ← inductionError
-      pure (base, ind)
-    else
-      let #[base, ind, n0] := goals.toArray |
-        trace[Verbose] "Unexpected number of goals from applying recursor"
-        throwError ← inductionError
-      n0.assign (mkNatLit numBaseSplits)
-      pure (base, ind)
+    let #[base, ind, n0] := goals.toArray |
+      trace[Verbose] "Unexpected number of goals from applying recursor"
+      throwError ← inductionError
+    n0.assign (mkNatLit numBaseSplits)
+    pure (base, ind)
 
 
   -- Limited simp setup
@@ -264,27 +236,22 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array S
     baseGoals := baseGoals.push <| simpedTop.getD top
     remaining := rest
 
-  let simpedZeroGoals ←
-    if numBaseSplits = 0 then
-      pure [remaining]
-    else
-      let zeroGoals ← remaining.apply (← mkConstWithFreshMVarLevels ``Nat.le_base_zero)
-      zeroGoals.mapM fun goal => do
-        let ⟨simpedZeroGoal, _⟩ ← simpTarget goal ctx #[simprocs]
-        pure <| simpedZeroGoal.getD goal
 
+  let zeroGoals ← remaining.apply (← mkConstWithFreshMVarLevels ``Nat.le_base_zero)
+  let simpedZeroGoals ← zeroGoals.mapM fun goal => do
+      let ⟨simpedZeroGoal, _⟩ ← simpTarget goal ctx #[simprocs]
+      pure <| simpedZeroGoal.getD goal
+
+  let simpTheorems ← simpTheoremsOfNames [``forall_geq_zero] (simpOnly := true)
+  let forallSimpCtx ← Simp.mkContext {} (simpTheorems := #[simpTheorems])
   let unshiftLemma := if weak then ``le_induction_shift_undo_weak else ``le_induction_shift_undo_strong
+  let unshiftExpr ← mkConstWithFreshMVarLevels unshiftLemma
+  let shiftedIndGoals  ← indGoal.apply <| (mkAppN unshiftExpr #[mkNatLit numBaseSplits, origMotive, mkNatLit lowerbound]).headBeta
+  let simpedIndGoals ← shiftedIndGoals.mapM (fun goal => do
+    let ⟨newGoal, _⟩ ←  simpTarget goal forallSimpCtx #[simprocs]
+    pure <| newGoal.getD goal)
 
-  let shiftedIndGoal ←
-    if lowerbound != 0 then
-      let unshiftExpr ← mkConstWithFreshMVarLevels unshiftLemma
-      indGoal.apply <| (mkAppN unshiftExpr #[mkNatLit lowerbound, origMotive]).headBeta
-    else
-      pure [indGoal]
-
-
-
-  setGoals (simpedZeroGoals ++ baseGoals.toList.reverse ++ shiftedIndGoal)
+  setGoals (simpedZeroGoals ++ baseGoals.toList.reverse ++ simpedIndGoals)
 
 def useTac (witness : Term) (stmt? : Option Term) : TacticM Unit := withMainContext do
   runUse false (pure ()) [witness]
