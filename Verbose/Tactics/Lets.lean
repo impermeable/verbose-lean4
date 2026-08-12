@@ -119,7 +119,11 @@ theorem strongRec_with_bases {motive : ℕ → Prop} {n₀ : ℕ}
 
 theorem forall_geq_zero {P : ℕ → Prop} : (∀ n ≥ 0, P n) ↔ ∀ n, P n := by sorry
 
-
+/--
+  This function provides a flexible induction setup:
+  - Supports strong and weak induction
+  - Supports multiple base cases (only contiguous integers)
+-/
 def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array Syntax := #[]) : TacticM Unit := do
   trace[Verbose] "Entering letsInductFlex"
   let orig_goal ← getMainGoal
@@ -184,6 +188,7 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array S
 
   let numBaseSplits := baseCases.size - 1
 
+  -- Shift the index to only have two recursors that both start at 0
   let motiveShifted ←
     if lowerbound = 0 then
       pure origMotive
@@ -194,6 +199,7 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array S
 
   trace[Verbose] "Working with motive: {motiveShifted}"
 
+  -- Choose recursor based on strong or weak induction
   let recursor :=
     if weak then
       ``rec_with_bases
