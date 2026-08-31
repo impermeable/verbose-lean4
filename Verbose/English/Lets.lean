@@ -223,61 +223,45 @@ end
 section
 open Verbose.NameLess
 
-set_option trace.Verbose true in
 example : ∀ n : ℕ, 5*n ≥ n  := by
   Let's proceed by induction on n
-  · sorry
-  ·
-    sorry
+  · lia
+  · lia
 
-set_option trace.Verbose true in
 example : ∀ n : ℕ, 5*n ≥ n  := by
   Let's proceed by strong induction on n
-  · sorry
-  ·
-    sorry
+  · lia
+  · lia
 
-
-set_option trace.Verbose true in
 example : ∀ n ≥ 5, 5*n ≥ n := by
   Let's proceed by induction on n
-  ·
-    sorry
-  · sorry
+  · lia
+  · lia
 
-set_option trace.Verbose true in
 example : ∀ n > 5, 5*n ≥ n := by
   Let's proceed by induction on n
-  ·
-    sorry
-  · sorry
+  · lia
+  · lia
 
 
 example : ∀ n ≥ 5, 5*n ≥ n := by
   Let's proceed by strong induction on n
-  ·
-    sorry
-  · sorry
+  · lia
+  · lia
 
-
-set_option trace.Verbose true in
 example : ∀ n ≥ 5, 5*n ≥ n := by
   Let's proceed by induction on n, with base cases 5, 6 and 7
-  ·
-    sorry
-  · sorry
-  · sorry
-  · sorry
+  · norm_num
+  · norm_num
+  · norm_num
+  · lia
 
-set_option trace.Verbose true in
 example : ∀ n ≥ 5, 5*n ≥ n := by
   Let's proceed by strong induction on n, with base cases 5, 6 and 7
-  ·
-    sorry
-  · sorry
-  · sorry
-  · sorry
-
+  · norm_num
+  · norm_num
+  · norm_num
+  · lia
 
 end
 

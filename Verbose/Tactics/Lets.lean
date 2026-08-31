@@ -91,36 +91,47 @@ theorem rec_with_bases {motive : ℕ → Prop} {n₀ : ℕ}
     (base : ∀ n, n ≤ n₀ → motive n)
     (step : ∀ n ≥ n₀, motive n → motive (n + 1)) :
     ∀ n, motive n := by
-    intro n
-    induction n
-    · exact base 0 (by grind)
-    next n hn =>
-      by_cases hk : n < n₀
-      · apply base _ (by grind)
-      · apply step _ (by grind) hn
+  intro n
+  induction n
+  · exact base 0 (by lia)
+  next n hn =>
+    by_cases hk : n < n₀
+    · apply base _ (by lia)
+    · apply step _ (by lia) hn
 
 lemma le_induction_shift_undo_weak {n₀ : ℕ} {P : ℕ → Prop} {k : ℕ} (h : ∀ n ≥ n₀ + k, P n → P (n + 1)) : ∀ n ≥ n₀, P (n + k) → P ((n + 1) + k) := by
-  sorry
+  intro n hn hnk
+  rw [show n + 1 + k = n + k + 1 by ring]
+  exact h _ (by omega) hnk
 
-lemma le_induction_shift_undo_strong {n₀ : ℕ} {P : ℕ → Prop} {shift : ℕ} (h : ∀ n ≥ (n₀ + shift), (∀ k ≤ n, P k) → P (n + 1)) : ∀ n ≥ n₀, (∀ k ≤ n, P (k + shift)) → P ((n + 1) + shift) := by
-  sorry
-
-
-
+lemma le_induction_shift_undo_strong {n₀ : ℕ} {P : ℕ → Prop} {shift : ℕ} (h : ∀ n ≥ (n₀ + shift), (∀ k ≤ n, k ≥ shift → P k) → P (n + 1)) : ∀ n ≥ n₀, (∀ k ≤ n, P (k + shift)) → P ((n + 1) + shift) := by
+  intro n hn h'
+  rw [show n + 1 + shift = n + shift + 1 by ring]
+  apply h _ (by lia)
+  intro k hk hk'
+  rw [show k = k - shift + shift by lia]
+  apply h'
+  lia
 
 -- Strictly speaking, the base cases could be n < n₀. However, students find strong induction
--- without base cases very confusing. This formulation almost matches
+-- without base cases very confusing, and this formulation always retains a base case.
 theorem strongRec_with_bases {motive : ℕ → Prop} {n₀ : ℕ}
     (base : ∀ n, n ≤ n₀ → motive n)
     (step : ∀ n ≥ n₀, (∀ k , k ≤ n → motive k) → motive (n + 1)) :
     ∀ n, motive n := by
   intro n
-  induction n
-  · exact base 0 (by grind)
-  next n hn =>
-    sorry
+  induction n using Nat.strong_induction_on
+  next k hm =>
+    match k with
+    | 0 => exact base _ (by lia)
+    | k + 1 =>
+      by_cases hk : k < n₀
+      · exact base _ (by lia)
+      · apply step _ (by lia)
+        intro k' hk'
+        exact hm _ (by lia)
 
-theorem forall_geq_zero {P : ℕ → Prop} : (∀ n ≥ 0, P n) ↔ ∀ n, P n := by sorry
+theorem forall_geq_zero {P : ℕ → Prop} : (∀ n ≥ 0, P n) ↔ ∀ n, P n := by simp
 
 /--
   This function provides a flexible induction setup:
