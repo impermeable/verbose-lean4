@@ -21,6 +21,9 @@ def claim (hyp_name : Name) (stmt : Term) : TacticM Unit := do
     replaceMainGoal [subGoal, mainGoal]
 
 register_endpoint inductionError : CoreM String
+register_endpoint inductionBaseError : CoreM String
+register_endpoint inductionUnexpectedError : CoreM String
+register_endpoint inductionBinderError : CoreM String
 
 /-- Perform a proof by induction on a natural number. Note that, compared
 to the `induction` tactic, in the inductive case the natural number and inductive
@@ -136,9 +139,8 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array S
   trace[Verbose] "Extracted body {body}"
 
   if bn != binderName then
-    -- TODO (low): Make error more specific
     trace[Verbose] "Wrong binder name"
-    throwError ← inductionError
+    throwError ← inductionBinderError
   if not (← isDefEq bt (mkConst ``Nat)) then
     trace[Verbose] "Wrong binder type"
     throwError ← inductionError
@@ -163,28 +165,26 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array S
 
   if dependentOnBound then
     trace[Verbose] "Motive depends on bound"
-    throwError ← inductionError
+    throwError ← inductionUnexpectedError
 
   let origMotive := Expr.lam bn bt motiveBody .default
   if lowerboundOpt.isNone then
     trace[Verbose] "No lower bound detected"
-    throwError ← inductionError
+    throwError ← inductionUnexpectedError
   let lowerbound := if isStrict then lowerboundOpt.get! + 1 else lowerboundOpt.get!
 
   let bases ← rawBases.mapM fun s => do
     match s.isNatLit? with
     | some n => pure n
-    -- TODO: Specialize error
-    | none => throwError ← inductionError
+    | none => throwError ← inductionBaseError
 
   -- Validation of base cases
   let baseCases := if bases.isEmpty then #[0] else bases.map (· - lowerbound)
   trace[Verbose] "baseCases: {baseCases}"
 
   unless baseCases.qsort (· < ·) == Array.range baseCases.size do
-    -- TODO: Specialize this error
     trace[Verbose] "Wrong base cases";
-    throwError ← inductionError
+    throwError ← inductionBaseError
 
   let numBaseSplits := baseCases.size - 1
 
@@ -220,7 +220,7 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array S
   let ⟨baseGoal, indGoal⟩ ←
     let #[base, ind, n0] := goals.toArray |
       trace[Verbose] "Unexpected number of goals from applying recursor"
-      throwError ← inductionError
+      throwError ← inductionUnexpectedError
     n0.assign (mkNatLit numBaseSplits)
     pure (base, ind)
 
@@ -236,7 +236,7 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array S
     let split ← remaining.apply (← mkConstWithFreshMVarLevels ``Nat.le_base_split)
     let #[top, rest] := split.toArray |
       trace[Verbose] "Not exactly two goals when stating base cases"
-      throwError ← inductionError
+      throwError ← inductionUnexpectedError
     let ⟨simpedTop, _⟩ ← simpTarget top ctx #[simprocs]
 
     baseGoals := baseGoals.push <| simpedTop.getD top

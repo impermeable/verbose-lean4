@@ -65,6 +65,18 @@ elab "Let's prove the contrapositive: " stmt:term : tactic =>
 implement_endpoint (lang := en) inductionError : CoreM String :=
 pure "The statement must start with a universal quantifier on a natural number."
 
+implement_endpoint (lang := en) inductionBaseError : CoreM String :=
+pure "The base cases should be subsequent numbers starting from the lower bound of the quantified statement."
+
+
+implement_endpoint (lang := en) inductionBinderError : CoreM String :=
+pure "Induction should be done on the first variable quantified in the universal quantifier."
+
+
+implement_endpoint (lang := en) inductionUnexpectedError : CoreM String :=
+pure "Unexpected error during induction, this statement may be too complex to prove."
+
+
 implement_endpoint (lang := en) notWhatIsNeeded : CoreM String :=
 pure "This is not what needs to be proven."
 
