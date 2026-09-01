@@ -131,7 +131,7 @@ theorem strongRec_with_bases {motive : ℕ → Prop} {n₀ : ℕ}
         intro k' hk'
         exact hm _ (by lia)
 
-theorem forall_geq_zero {P : ℕ → Prop} : (∀ n ≥ 0, P n) ↔ ∀ n, P n := by simp
+theorem geq_zero_imp {p : Prop} {n : ℕ} : (n ≥ 0 → p) ↔ p := by simp
 
 /--
   This function provides a flexible induction setup:
@@ -259,7 +259,8 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array S
       let ⟨simpedZeroGoal, _⟩ ← simpTarget goal ctx #[simprocs]
       pure <| simpedZeroGoal.getD goal
 
-  let simpTheorems ← simpTheoremsOfNames [``forall_geq_zero] (simpOnly := true)
+  -- This simplifies both ∀ n ≥ 0, and n ≥ 0 → ...
+  let simpTheorems ← simpTheoremsOfNames [``geq_zero_imp] (simpOnly := true)
   let forallSimpCtx ← Simp.mkContext {} (simpTheorems := #[simpTheorems])
   let unshiftLemma := if weak then ``le_induction_shift_undo_weak else ``le_induction_shift_undo_strong
   let unshiftExpr ← mkConstWithFreshMVarLevels unshiftLemma
