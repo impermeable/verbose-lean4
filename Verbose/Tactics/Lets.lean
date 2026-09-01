@@ -79,13 +79,13 @@ lemma Nat.le_induction_shift {k : ℕ} {P : ℕ → Prop} (h : ∀ n, P (n + k))
 lemma Nat.le_base_split {k : ℕ} {P : ℕ → Prop} (top : P (k + 1)) (rest : ∀ n, n ≤ k → P n) :
     ∀ n, n ≤ k + 1 → P n := by
   intro n hn
-  rcases Nat.lt_succ_iff_lt_or_eq.1 (Nat.lt_succ_of_le hn) with h | h
-  · exact rest n (Nat.lt_succ_iff.1 h)
+  obtain h | h := le_iff_lt_or_eq.mp hn
+  · exact rest n (Nat.lt_succ_iff.mp h)
   · exact h ▸ top
 
 lemma Nat.le_base_zero {P : ℕ → Prop} (h : P 0) : ∀ n, n ≤ 0 → P n := by
   intro n hn
-  rw [Nat.le_zero.1 hn]; exact h
+  exact le_zero.mp hn ▸ h
 
 theorem rec_with_bases {motive : ℕ → Prop} {n₀ : ℕ}
     (base : ∀ n, n ≤ n₀ → motive n)
@@ -217,7 +217,6 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array S
     else
       ``strongRec_with_bases
 
-
   trace[Verbose] "Modifying goals"
   if lowerbound != 0 then
     evalTactic (← `(tactic| refine Nat.le_induction_shift (k := $(Syntax.mkNatLit lowerbound)) ?_))
@@ -235,7 +234,6 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array S
     n0.assign (mkNatLit numBaseSplits)
     pure (base, ind)
 
-
   -- Limited simp setup
   let simprocs ← ({} : Simprocs).add ``Nat.reduceAdd false
   let ctx ← Simp.mkContext {} (simpTheorems := #[])
@@ -252,7 +250,6 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array S
 
     baseGoals := baseGoals.push <| simpedTop.getD top
     remaining := rest
-
 
   let zeroGoals ← remaining.apply (← mkConstWithFreshMVarLevels ``Nat.le_base_zero)
   let simpedZeroGoals ← zeroGoals.mapM fun goal => do
