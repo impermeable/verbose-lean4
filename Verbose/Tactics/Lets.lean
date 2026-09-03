@@ -229,6 +229,7 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array S
 
   let ⟨baseGoal, indGoal⟩ ←
     let #[base, ind, n0] := goals.toArray |
+      -- Should really be unreachable
       trace[Verbose] "Unexpected number of goals from applying recursor"
       throwError ← inductionUnexpectedError
     n0.assign (mkNatLit numBaseSplits)
@@ -244,6 +245,7 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array S
   for _ in [0:numBaseSplits] do
     let split ← remaining.apply (← mkConstWithFreshMVarLevels ``Nat.le_base_split)
     let #[top, rest] := split.toArray |
+      -- Should really be unreachable
       trace[Verbose] "Not exactly two goals when stating base cases"
       throwError ← inductionUnexpectedError
     let ⟨simpedTop, _⟩ ← simpTarget top ctx #[simprocs]

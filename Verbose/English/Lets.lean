@@ -263,7 +263,49 @@ example : ∀ n ≥ 5, 5*n ≥ n := by
   · norm_num
   · lia
 
-end
+
+/-- error: The statement must start with a universal quantifier on a natural number. -/
+#guard_msgs in
+example : ∃ n : ℕ, False := by
+  Let's proceed by induction on n
+
+/-- error: Induction should be done on the first variable quantified in the universal quantifier. -/
+#guard_msgs in
+example : ∀ n : ℕ, False := by
+  Let's proceed by induction on m
+
+/-- error: Unexpected error during induction, this statement may be too complex to prove. -/
+#guard_msgs in
+example : ∀ n ≥ n*2, False := by
+  Let's proceed by induction on n
+
+/-- error: Unexpected error during induction, this statement may be too complex to prove. -/
+#guard_msgs in
+example (k : ℕ): ∀ n ≥ k, False := by
+  Let's proceed by induction on n
+
+/--
+error: The base cases should be subsequent numbers starting from the lower bound of the quantified statement.
+-/
+#guard_msgs in
+example : ∀ n : ℕ, False := by
+  Let's proceed by induction on n, with base cases True and False
+
+/--
+error: The base cases should be subsequent numbers starting from the lower bound of the quantified statement.
+-/
+#guard_msgs in
+example : ∀ n : ℕ, False := by
+  Let's proceed by induction on n, with base cases 0, 1 and 3
+
+/--
+error: The base cases should be subsequent numbers starting from the lower bound of the quantified statement.
+-/
+#guard_msgs in
+example : ∀ n : ℕ, False := by
+  Let's proceed by induction on n, with base cases 0, 1 and 3
+
+
 
 example (P Q : Prop) (h : P ∧ Q) : P ∧ Q := by
   constructor
