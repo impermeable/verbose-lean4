@@ -231,7 +231,6 @@ example : ∀ n : ℕ, 5*n ≥ n  := by
 example : ∀ n : ℕ, 5*n ≥ n  := by
   Let's proceed by strong induction on n
   · lia
-  · lia
 
 example : ∀ n ≥ 5, 5*n ≥ n := by
   Let's proceed by induction on n
@@ -243,11 +242,6 @@ example : ∀ n > 5, 5*n ≥ n := by
   · lia
   · lia
 
-
-example : ∀ n ≥ 5, 5*n ≥ n := by
-  Let's proceed by strong induction on n
-  · lia
-  · lia
 
 example : ∀ n ≥ 5, 5*n ≥ n := by
   Let's proceed by induction on n, with base cases 5, 6 and 7
@@ -305,6 +299,22 @@ error: The base cases should be subsequent numbers starting from the lower bound
 example : ∀ n : ℕ, False := by
   Let's proceed by induction on n, with base cases 0, 1 and 3
 
+
+enableBaseCasesForStrongInduction
+
+example : ∀ n : ℕ, 5*n ≥ n  := by
+  Let's proceed by strong induction on n
+  · lia
+  · lia
+
+example : ∀ n ≥ 5, 5*n ≥ n := by
+  Let's proceed by strong induction on n, with base cases 5, 6 and 7
+  · norm_num
+  · norm_num
+  · norm_num
+  · lia
+
+disableBaseCasesForStrongInduction
 
 
 example (P Q : Prop) (h : P ∧ Q) : P ∧ Q := by

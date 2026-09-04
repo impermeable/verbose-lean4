@@ -83,9 +83,23 @@ lemma Nat.le_base_split {k : ℕ} {P : ℕ → Prop} (top : P (k + 1)) (rest : �
   · exact rest n (Nat.lt_succ_iff.mp h)
   · exact h ▸ top
 
-lemma Nat.le_base_zero {P : ℕ → Prop} (h : P 0) : ∀ n, n ≤ 0 → P n := by
-  intro n hn
-  exact le_zero.mp hn ▸ h
+lemma Nat.lt_base_split {k : ℕ} {P : ℕ → Prop} (top : P k) (rest : ∀ n < k, P n) :
+    ∀ n < k + 1, P n := by
+  sorry
+
+lemma Nat.le_base_zero {P : ℕ → Prop} : (∀ n, n ≤ 0 → P n) ↔ P 0 := by
+  constructor
+  · intro hn
+    exact hn _ (by lia)
+  · intro h0 n hn
+    simp only [nonpos_iff_eq_zero] at hn
+    exact hn ▸ h0
+
+lemma Nat.lt_base_zero {P : ℕ → Prop} : (∀ n, n < 0 → P n) ↔ True := by
+  simp
+lemma Nat.lt_base_one {P : ℕ → Prop} : (∀ n, n < 1 → P n) ↔ P 0 := by
+  simp
+
 
 theorem rec_with_bases {motive : ℕ → Prop} {n₀ : ℕ}
     (base : ∀ n, n ≤ n₀ → motive n)
@@ -104,7 +118,16 @@ lemma le_induction_shift_undo_weak {n₀ : ℕ} {P : ℕ → Prop} {k : ℕ} (h 
   rw [show n + 1 + k = n + k + 1 by ring]
   exact h _ (by omega) hnk
 
-lemma le_induction_shift_undo_strong {n₀ : ℕ} {P : ℕ → Prop} {shift : ℕ} (h : ∀ n ≥ (n₀ + shift), (∀ k ≤ n, k ≥ shift → P k) → P (n + 1)) : ∀ n ≥ n₀, (∀ k ≤ n, P (k + shift)) → P ((n + 1) + shift) := by
+lemma le_induction_shift_undo_strong {n₀ : ℕ} {P : ℕ → Prop} {shift : ℕ}
+    (h : ∀ n ≥ (n₀ + shift), (∀ k < n, k ≥ shift → P k) → P n) :
+  ∀ n ≥ n₀, (∀ k < n, P (k + shift)) → P (n + shift) := by
+  intro n hn h'
+  apply h _ (by lia)
+  intro k hk hk'
+  simpa [show k - shift + shift = k by lia] using h' (k - shift) (by lia)
+
+
+lemma le_induction_shift_undo_strong_bases {n₀ : ℕ} {P : ℕ → Prop} {shift : ℕ} (h : ∀ n ≥ (n₀ + shift), (∀ k ≤ n, k ≥ shift → P k) → P (n + 1)) : ∀ n ≥ n₀, (∀ k ≤ n, P (k + shift)) → P ((n + 1) + shift) := by
   intro n hn h'
   rw [show n + 1 + shift = n + shift + 1 by ring]
   apply h _ (by lia)
@@ -112,6 +135,17 @@ lemma le_induction_shift_undo_strong {n₀ : ℕ} {P : ℕ → Prop} {shift : �
   rw [show k = k - shift + shift by lia]
   apply h'
   lia
+
+theorem strongRec {motive : ℕ → Prop} {n₀ : ℕ}
+    (base : ∀ n < n₀, motive n)
+    (step : ∀ n ≥ n₀, (∀ k , k < n → motive k) → motive n) :
+    ∀ n, motive n := by
+  intro n
+  induction n using Nat.strongRec
+  next n hn =>
+    by_cases hn₀ : n < n₀
+    · exact base _ hn₀
+    · exact step _ (by lia) hn
 
 -- Strictly speaking, the base cases could be n < n₀. However, students find strong induction
 -- without base cases very confusing, and this formulation always retains a base case.
@@ -210,12 +244,17 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array S
 
   trace[Verbose] "Working with motive: {motiveShifted}"
 
+  let strongRecBases := (← verboseConfigurationExt.get).useBaseCasesForStrongInduction
+
   -- Choose recursor based on strong or weak induction
   let recursor :=
     if weak then
       ``rec_with_bases
     else
-      ``strongRec_with_bases
+      if strongRecBases then
+        ``strongRec_with_bases
+      else
+        ``strongRec
 
   trace[Verbose] "Modifying goals"
   if lowerbound != 0 then
@@ -227,23 +266,32 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array S
   let goals ← curGoal.apply <| mkApp recExpr motiveShifted
   trace[Verbose] "Applied recursor"
 
+  let n₀ := if !weak ∧ !strongRecBases ∧ !rawBases.isEmpty then numBaseSplits + 1 else numBaseSplits
+
   let ⟨baseGoal, indGoal⟩ ←
     let #[base, ind, n0] := goals.toArray |
       -- Should really be unreachable
       trace[Verbose] "Unexpected number of goals from applying recursor"
       throwError ← inductionUnexpectedError
-    n0.assign (mkNatLit numBaseSplits)
+    n0.assign (mkNatLit n₀)
     pure (base, ind)
 
   -- Limited simp setup
-  let simprocs ← ({} : Simprocs).add ``Nat.reduceAdd false
+  let simprocs_add ← ({} : Simprocs).add ``Nat.reduceAdd false
+  let simprocs ← simprocs_add.add ``Nat.reduceSub false
   let ctx ← Simp.mkContext {} (simpTheorems := #[])
 
   -- Split base goals into multiple cases
   let mut baseGoals : Array MVarId := #[]
   let mut remaining := baseGoal
   for _ in [0:numBaseSplits] do
-    let split ← remaining.apply (← mkConstWithFreshMVarLevels ``Nat.le_base_split)
+    trace[Verbose] "Splitting base cases"
+    let splitLemma := if weak ∨ strongRecBases then
+        ``Nat.le_base_split
+      else
+        ``Nat.lt_base_split
+
+    let split ← remaining.apply (← mkConstWithFreshMVarLevels splitLemma)
     let #[top, rest] := split.toArray |
       -- Should really be unreachable
       trace[Verbose] "Not exactly two goals when stating base cases"
@@ -253,22 +301,31 @@ def letsInductFlex (binderName : Name) (weak : Bool := true) (rawBases : Array S
     baseGoals := baseGoals.push <| simpedTop.getD top
     remaining := rest
 
-  let zeroGoals ← remaining.apply (← mkConstWithFreshMVarLevels ``Nat.le_base_zero)
-  let simpedZeroGoals ← zeroGoals.mapM fun goal => do
-      let ⟨simpedZeroGoal, _⟩ ← simpTarget goal ctx #[simprocs]
-      pure <| simpedZeroGoal.getD goal
+  trace[Verbose] "Treating goals for the zero case"
+  let zeroSimpTheorems ← simpTheoremsOfNames [``Nat.le_base_zero, ``Nat.lt_base_zero, ``Nat.lt_base_one] (simpOnly := true)
+  let zeroCtx ← Simp.mkContext {} (simpTheorems := #[zeroSimpTheorems])
+  let ⟨simpedZeroGoal, _⟩ ← simpTarget remaining zeroCtx #[simprocs]
 
   -- This simplifies both ∀ n ≥ 0, and n ≥ 0 → ...
   let simpTheorems ← simpTheoremsOfNames [``geq_zero_imp] (simpOnly := true)
   let forallSimpCtx ← Simp.mkContext {} (simpTheorems := #[simpTheorems])
-  let unshiftLemma := if weak then ``le_induction_shift_undo_weak else ``le_induction_shift_undo_strong
+  let unshiftLemma :=
+    if weak then
+      ``le_induction_shift_undo_weak
+    else
+      if strongRecBases then
+        ``le_induction_shift_undo_strong_bases
+      else
+        ``le_induction_shift_undo_strong
   let unshiftExpr ← mkConstWithFreshMVarLevels unshiftLemma
-  let shiftedIndGoals  ← indGoal.apply <| (mkAppN unshiftExpr #[mkNatLit numBaseSplits, origMotive, mkNatLit lowerbound]).headBeta
+
+  trace[Verbose] "Unshifting induction"
+  let shiftedIndGoals ← indGoal.apply <| (mkAppN unshiftExpr #[mkNatLit n₀, origMotive, mkNatLit lowerbound]).headBeta
   let simpedIndGoals ← shiftedIndGoals.mapM (fun goal => do
     let ⟨newGoal, _⟩ ←  simpTarget goal forallSimpCtx #[simprocs]
     pure <| newGoal.getD goal)
 
-  setGoals (simpedZeroGoals ++ baseGoals.toList.reverse ++ simpedIndGoals)
+  setGoals ([simpedZeroGoal.getD remaining] ++ baseGoals.toList.reverse ++ simpedIndGoals)
 
 def useTac (witness : Term) (stmt? : Option Term) : TacticM Unit := withMainContext do
   runUse false (pure ()) [witness]
